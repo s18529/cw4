@@ -6,7 +6,9 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Zad3.Helpers;
 using Zad3.Models;
+using Zad3.Services;
 
 namespace Zad3.Controllers
 {
@@ -14,135 +16,38 @@ namespace Zad3.Controllers
     [Route("api/enrollments")]
     public class EnrollmentsController : ControllerBase
     {
-        private string connectionString = "Data Source=db-mssql;Initial Catalog=s18529;Integrated Security=True";
+        private readonly IStudentDbService service;
+
+        public EnrollmentsController(IStudentDbService dbService)
+        {
+            service = dbService;
+        }
+
         [HttpPost]
         public IActionResult AddStudent(Student student)
         {
-            if(student.IndexNumber.Equals(null) || student.FirstName.Equals(null) || student.LastName.Equals(null) || student.Bdate==null || student.Studies.Equals(null))
+            MyHelper helper = service.AddStudent(student);
+            if (helper.Value != 0)
             {
-                return BadRequest();
+                return BadRequest(helper.Message);
             }
-            using(var client = new SqlConnection(connectionString))
-                using(var command = new SqlCommand())
+            else
             {
-                command.Connection = client;
-                client.Open();
-                var transaction = client.BeginTransaction();
-                command.Transaction = transaction;
-                command.CommandText = "select IndexNumber from Student";
-                var dr = command.ExecuteReader();
-                while (dr.Read())
-                {
-                    if (dr[0].Equals(student.IndexNumber))
-                    {
-                        dr.Close();
-                        transaction.Rollback();
-                        return BadRequest("niepoprawny index studenta");
-                    }
-                }
-                dr.Close();
-                int idStudy;
-                command.CommandText = "select idStudy from Studies where name = @name";
-                command.Parameters.AddWithValue("name", student.Studies);
-                dr = command.ExecuteReader();
-                if (!dr.Read())
-                {
-                    dr.Close();
-                    transaction.Rollback();
-                    return BadRequest("Niepoprawne studia");
-                }
-                else
-                {
-                    idStudy = int.Parse(dr[0].ToString());
-                }
-                dr.Close();
-                command.CommandText = "select * from enrollment where semester=2 and idStudy = @idStudy";
-                command.Parameters.AddWithValue("idStudy", idStudy);
-                
-                dr = command.ExecuteReader();
-                int id=0;
-                Enrollment enrollment = new Enrollment();
-                if (!dr.Read())
-                {
-                    command.CommandText = "select max(idEnrollment) from Enrollment";
-                    dr.Close();
-                    var dr2 = command.ExecuteReader();
-
-                    id = int.Parse(dr2[0].ToString());
-                    id++;
-                    dr2.Close();
-                    command.CommandText = "insert into Enrollment values (@id, 1, @idStudy, @date)";
-                    command.Parameters.AddWithValue("date", DateTime.Now);
-                    command.Parameters.AddWithValue("id", id);
-                    command.ExecuteNonQuery();
-                    enrollment.IdEnrollment = id;
-                    enrollment.IdStudy = idStudy;
-                    enrollment.StartDate = DateTime.Now;
-                    enrollment.Semester = 1;
-                }
-                else
-                {
-                    id = int.Parse(dr[0].ToString());
-                    enrollment.IdEnrollment = id;
-                    enrollment.IdStudy = int.Parse(dr[2].ToString());
-                    enrollment.StartDate = DateTime.Parse(dr[3].ToString());
-                    enrollment.Semester = int.Parse(dr[1].ToString());
-                    command.Parameters.AddWithValue("id", id);
-                }
-                dr.Close();
-                command.CommandText = "insert into student values (@Inumber, @Fname, @Lname, @Bdate, @id)";
-                command.Parameters.AddWithValue("Inumber", student.IndexNumber);
-                command.Parameters.AddWithValue("Fname", student.FirstName);
-                command.Parameters.AddWithValue("Lname", student.LastName);
-                command.Parameters.AddWithValue("Bdate", student.Bdate);
-                command.ExecuteNonQuery();
-                transaction.Commit();
-                return StatusCode((int)HttpStatusCode.Created, enrollment);
-
+                return StatusCode((int)HttpStatusCode.Created, helper.enrollment);
             }
         }
         
         [HttpPost("promotions")]
         public IActionResult promote(Study study)
         {
-            using (var client = new SqlConnection(connectionString))
-            using (var command = new SqlCommand())
+            MyHelper helper = service.Promote(study);
+            if (helper.Value != 0)
             {
-                command.Connection = client;
-                client.Open();
-                if (study.Semestr == null || study.Studies.Equals(null))
-                {
-                    return BadRequest("błedne dane");
-                }
-                command.CommandText = "select * from enrollment e join Studies s on s.IdStudy=e.IdStudy where semester=@sem and s.name =@name";
-                command.Parameters.AddWithValue("sem", study.Semestr);
-                command.Parameters.AddWithValue("name", study.Studies);
-                var dr = command.ExecuteReader();
-                if (!dr.Read())
-                {
-                    return BadRequest("Nie ma takiego enrollmentu");
-                }
-                dr.Close();
-                using (var com = new SqlCommand()) {
-                    com.Connection = client;
-                    com.CommandText = "pormote";
-                    com.CommandType = CommandType.StoredProcedure;
-                    com.Parameters.AddWithValue("Studies", study.Studies);
-                    com.Parameters.AddWithValue("Semester", study.Semestr);
-                    command.ExecuteNonQuery();
-                }
-                command.CommandText = "select * from enrollment e join Studies st on e.IdStudy = st.IdStudy where e.Semester = (@sem+1) and st.Name = @name";
-                dr = command.ExecuteReader();
-                if (!dr.Read())
-                {
-                    return NotFound("problem przy dodawaniu enrolmment");
-                }
-                Enrollment enrollment = new Enrollment();
-                enrollment.IdEnrollment = int.Parse(dr[0].ToString());
-                enrollment.IdStudy = int.Parse(dr[2].ToString());
-                enrollment.StartDate = DateTime.Parse(dr[3].ToString());
-                enrollment.Semester = int.Parse(dr[1].ToString());
-                return StatusCode((int)HttpStatusCode.Created, enrollment);
+                return BadRequest(helper.Message);
+            }
+            else
+            {
+                return StatusCode((int)HttpStatusCode.Created, helper.enrollment);
             }
         }
         

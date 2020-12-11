@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Zad3.DAL;
+using Zad3.Services;
 
 namespace Zad3
 {
@@ -26,6 +27,7 @@ namespace Zad3
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddScoped<IStudentDbService, StudnetDbService>();
             services.AddSingleton<IDbService, MockDbService>();
             services.AddControllers();
         }
