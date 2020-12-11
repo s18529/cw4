@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Net;
@@ -55,7 +56,7 @@ namespace Zad3.Controllers
                     idStudy = int.Parse(dr[0].ToString());
                 }
                 dr.Close();
-                command.CommandText = "select * from enrollment where semester=1 and idStudy = @idStudy";
+                command.CommandText = "select * from enrollment where semester=2 and idStudy = @idStudy";
                 command.Parameters.AddWithValue("idStudy", idStudy);
                 
                 dr = command.ExecuteReader();
@@ -63,12 +64,13 @@ namespace Zad3.Controllers
                 Enrollment enrollment = new Enrollment();
                 if (!dr.Read())
                 {
-                    command.CommandText = "select max(idEnrollment)+1 from Enrollment";
+                    command.CommandText = "select max(idEnrollment) from Enrollment";
                     dr.Close();
-                    dr = command.ExecuteReader();
-                    dr.Read();
-                    id = int.Parse(dr[0].ToString());
-                    dr.Close();
+                    var dr2 = command.ExecuteReader();
+
+                    id = int.Parse(dr2[0].ToString());
+                    id++;
+                    dr2.Close();
                     command.CommandText = "insert into Enrollment values (@id, 1, @idStudy, @date)";
                     command.Parameters.AddWithValue("date", DateTime.Now);
                     command.Parameters.AddWithValue("id", id);
@@ -99,5 +101,50 @@ namespace Zad3.Controllers
 
             }
         }
+        
+        [HttpPost("promotions")]
+        public IActionResult promote(Study study)
+        {
+            using (var client = new SqlConnection(connectionString))
+            using (var command = new SqlCommand())
+            {
+                command.Connection = client;
+                client.Open();
+                if (study.Semestr == null || study.Studies.Equals(null))
+                {
+                    return BadRequest("błedne dane");
+                }
+                command.CommandText = "select * from enrollment e join Studies s on s.IdStudy=e.IdStudy where semester=@sem and s.name =@name";
+                command.Parameters.AddWithValue("sem", study.Semestr);
+                command.Parameters.AddWithValue("name", study.Studies);
+                var dr = command.ExecuteReader();
+                if (!dr.Read())
+                {
+                    return BadRequest("Nie ma takiego enrollmentu");
+                }
+                dr.Close();
+                using (var com = new SqlCommand()) {
+                    com.Connection = client;
+                    com.CommandText = "pormote";
+                    com.CommandType = CommandType.StoredProcedure;
+                    com.Parameters.AddWithValue("Studies", study.Studies);
+                    com.Parameters.AddWithValue("Semester", study.Semestr);
+                    command.ExecuteNonQuery();
+                }
+                command.CommandText = "select * from enrollment e join Studies st on e.IdStudy = st.IdStudy where e.Semester = (@sem+1) and st.Name = @name";
+                dr = command.ExecuteReader();
+                if (!dr.Read())
+                {
+                    return NotFound("problem przy dodawaniu enrolmment");
+                }
+                Enrollment enrollment = new Enrollment();
+                enrollment.IdEnrollment = int.Parse(dr[0].ToString());
+                enrollment.IdStudy = int.Parse(dr[2].ToString());
+                enrollment.StartDate = DateTime.Parse(dr[3].ToString());
+                enrollment.Semester = int.Parse(dr[1].ToString());
+                return StatusCode((int)HttpStatusCode.Created, enrollment);
+            }
+        }
+        
     }
 }
